@@ -11,8 +11,8 @@
 	<groupId>com.jsebastian.eden</groupId>
 	<artifactId>product-demoLogin</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
-	<name>Inmobiliaria Eden</name>
-	<description>Este es un sistema para la administración web de negociaciones de una inmobiliaria </description>
+	<name>Asesorias Eden</name>
+	<description>Este es un sistema que permite dar y recibir aseosrias </description>
 	<url/>
 	<licenses>
 		<license/>
