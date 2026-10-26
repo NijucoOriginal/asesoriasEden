@@ -1,7 +1,5 @@
 package com.jsebastian.eden.EdenSys.specifications;
 
-import com.jsebastian.eden.EdenSys.Dtos.InmuebleFiltroDto;
-import com.jsebastian.eden.EdenSys.domain.*;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Component;
 

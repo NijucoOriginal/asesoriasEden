@@ -1,6 +1,5 @@
 package com.jsebastian.eden.EdenSys.Dtos;
 
-import com.jsebastian.eden.EdenSys.domain.Rol;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
@@ -39,7 +38,6 @@ public record CrearUsuarioDto(
                 message = "La contraseña debe tener al menos una mayúscula, un número, un carácter especial y mínimo 8 caracteres")
         String contrasena,
 
-        Rol rol,
 
         // --- CAMPO PARA RECAPTCHA ---
         @NotBlank(message = "La validación de seguridad es obligatoria")

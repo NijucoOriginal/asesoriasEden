@@ -2,9 +2,8 @@ package com.jsebastian.eden.EdenSys.services;
 
 import ch.qos.logback.classic.Logger;
 import com.jsebastian.eden.EdenSys.Dtos.*;
-import com.jsebastian.eden.EdenSys.domain.Rol;
+import com.jsebastian.eden.EdenSys.domain.EstadoUsuario;
 import com.jsebastian.eden.EdenSys.domain.User;
-import com.jsebastian.eden.EdenSys.repository.LogsRepository;
 import com.jsebastian.eden.EdenSys.repository.UserRepository;
 import com.jsebastian.eden.EdenSys.mappers.UserMapper;
 import com.jsebastian.eden.EdenSys.exceptions.ValueConflictException;
@@ -18,18 +17,15 @@ import lombok.RequiredArgsConstructor;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
-import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
 import org.springframework.mail.javamail.MimeMessageHelper;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 
@@ -104,7 +100,7 @@ public class UserServiceImpl implements UserService {
                 User usuario = usuarioOpt.get();
 
                 // DESVINCULADO  permitir registro nuevo
-                if (usuario.getRol() == Rol.DESVINCULADO) {
+                if (usuario.getEstado() == EstadoUsuario.DESVINCULADO) {
 
                     if (existePorCedula(crearUsuarioDto.documentoIdentidad())) {
                         throw new ValueConflictException(
@@ -117,7 +113,7 @@ public class UserServiceImpl implements UserService {
                 }
 
                 // PENDIENTE  actualizar datos + contraseña + reenviar código
-                else if (usuario.getRol() == Rol.PENDIENTE) {
+                else if (usuario.getEstado() == EstadoUsuario.PENDIENTE) {
 
                     usuario.setNombre(crearUsuarioDto.nombre());
                     usuario.setApellido(crearUsuarioDto.apellido());

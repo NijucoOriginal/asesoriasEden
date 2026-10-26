@@ -1,20 +1,16 @@
 package com.jsebastian.eden.EdenSys.domain;
 
 import jakarta.persistence.*;
-import lombok.AllArgsConstructor;
-import lombok.Data;
-import lombok.EqualsAndHashCode;
-import lombok.NoArgsConstructor;
+import lombok.*;
 
 import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "users")
 @Data
-@EqualsAndHashCode(callSuper = true)
 @NoArgsConstructor
 @AllArgsConstructor
-public class User extends Persona {
+public class User {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -23,4 +19,19 @@ public class User extends Persona {
     private String codigoActivacion;
 
     private LocalDateTime fechaCreacionCodigo;
+
+    private String email;
+
+    private String contrasena;
+
+    private String nombre;
+
+    private String apellido;
+
+    private String documentoIdentidad;
+
+    private String telefono;
+
+    @Enumerated(EnumType.STRING)
+    private EstadoUsuario estado;
 }

@@ -4,7 +4,6 @@ import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
-import com.jsebastian.eden.EdenSys.domain.Rol;
 
 public record RegisterRequest(
         @NotBlank(message = "El nombre es obligatorio")
@@ -37,6 +36,6 @@ public record RegisterRequest(
         String recaptchaToken
 ) {
     public CrearUsuarioDto toCrearUsuarioDto() {
-        return new CrearUsuarioDto(nombre, apellido, documentoIdentidad, telefono, email, contrasena, Rol.PENDIENTE,recaptchaToken);
+        return new CrearUsuarioDto(nombre, apellido, documentoIdentidad, telefono, email, contrasena,recaptchaToken);
     }
 }

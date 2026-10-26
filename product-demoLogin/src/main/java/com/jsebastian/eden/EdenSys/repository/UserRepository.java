@@ -6,7 +6,6 @@ import org.springframework.stereotype.Repository;
 
 import java.util.List;
 import java.util.Optional;
-import com.jsebastian.eden.EdenSys.domain.Rol;
 
 @Repository
 public interface UserRepository extends JpaRepository<User, Long> {
@@ -43,16 +42,5 @@ public interface UserRepository extends JpaRepository<User, Long> {
      */
     boolean existsByDocumentoIdentidad(String cedula);
 
-    /**
-     * Busca usuarios por rol
-     *
-     * @param rol el rol a buscar
-     * @return List<User> lista de usuarios con ese rol
-     */
-    List<User> findByRol(Rol rol);
-
-    Optional<User> findByCodigoActivacion(String codigo);
-
-    List<User> findByRolNotIn(List<Rol> rols);
 
 }
