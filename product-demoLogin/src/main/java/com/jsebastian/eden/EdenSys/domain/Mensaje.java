@@ -1,47 +1,46 @@
 package com.jsebastian.eden.EdenSys.domain;
 
 import jakarta.persistence.*;
-import lombok.*;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 
 import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "mensajes")
-@Data
+@Getter
+@Setter
 @NoArgsConstructor
-@AllArgsConstructor
-@Builder
 public class Mensaje {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "conversacion_id", nullable = false)
     private Conversacion conversacion;
 
-    // Quien envió el mensaje
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "emisor_id", nullable = false)
     private User emisor;
 
-    // Quien recibe el mensaje
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "receptor_id", nullable = false)
     private User receptor;
 
     @Column(nullable = false, columnDefinition = "TEXT")
     private String contenido;
 
-    @Column(nullable = false)
+    @Column(nullable = false, updatable = false)
     private LocalDateTime enviadoEn;
 
     @Column(nullable = false)
     private boolean leido = false;
 
     @PrePersist
-    public void prePersist() {
-        this.enviadoEn = LocalDateTime.now();
+    void prePersist() {
+        if (enviadoEn == null) enviadoEn = LocalDateTime.now();
     }
 }

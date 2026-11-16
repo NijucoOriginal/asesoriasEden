@@ -67,17 +67,26 @@ public class SecurityConfig {
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(authz -> authz
                         .requestMatchers("/actuator/**").permitAll()
-                        .requestMatchers("/api/usuarios").permitAll() // crear usuario (registro)
-                        .requestMatchers("/api/auth/activate/**").permitAll()
-                        .requestMatchers("/api/auth/login").permitAll()
-                        .requestMatchers("/api/auth/contacto").permitAll()
-                        .requestMatchers("/api/auth/recuperar").permitAll()
-                        .requestMatchers("/api/auth/recuperar/cambiar").permitAll()
-                        .requestMatchers("/api/usuarios/**").hasAnyAuthority("CLIENTE", "AGENTE")
-                        .requestMatchers("/api/inmuebles/**").permitAll()
-                        .requestMatchers("/api/chatbot/**").permitAll()
+                        // Registro
+                        .requestMatchers(HttpMethod.POST, "/api/usuarios").permitAll()
+                        // Autenticación, activación y recuperación
+                        .requestMatchers(
+                                "/api/auth/activate/**",
+                                "/api/auth/login",
+                                "/api/auth/resend-activation",
+                                "/api/auth/contacto",
+                                "/api/auth/recuperar",
+                                "/api/auth/recuperar/cambiar").permitAll()
+                        // Tutores: públicos (se muestran en la página principal)
+                        .requestMatchers(HttpMethod.GET, "/api/tutores", "/api/tutores/**").permitAll()
+                        // WebSocket: el token se valida en el handshake
                         .requestMatchers("/ws-chat/**").permitAll()
-                        .requestMatchers("/api/chat/**").authenticated()
+                        // Cuenta INACTIVA: solo perfil y reactivación
+                        .requestMatchers("/api/usuarios/me").hasAnyAuthority("INACTIVO", "ESTUDIANTE", "MODERADOR")
+                        .requestMatchers("/api/usuarios/reactivar/**").hasAuthority("INACTIVO")
+                        // Cuenta ACTIVA
+                        .requestMatchers("/api/usuarios/**", "/api/asesorias/**", "/api/chat/**")
+                        .hasAnyAuthority("ESTUDIANTE", "MODERADOR")
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);

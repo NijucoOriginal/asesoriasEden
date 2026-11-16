@@ -1,16 +1,10 @@
 package com.jsebastian.eden.EdenSys.Dtos;
 
-import com.jsebastian.eden.EdenSys.domain.Rol;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
-import java.util.Objects;
-
-/**
- * DTO para la creación de usuarios con validaciones Jakarta
- */
 public record CrearUsuarioDto(
         @NotBlank(message = "El nombre es obligatorio")
         @Size(max = 50, message = "El nombre no puede exceder 50 caracteres")
@@ -36,16 +30,9 @@ public record CrearUsuarioDto(
         @NotBlank(message = "La contraseña es obligatoria")
         @Pattern(
                 regexp = "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[^a-zA-Z0-9]).{8,}$",
-                message = "La contraseña debe tener al menos una mayúscula, un número, un carácter especial y mínimo 8 caracteres")
+                message = "La contraseña debe tener al menos una mayúscula, una minúscula, un número, un símbolo y mínimo 8 caracteres")
         String contrasena,
 
-        Rol rol,
-
-        // --- CAMPO PARA RECAPTCHA ---
         @NotBlank(message = "La validación de seguridad es obligatoria")
         String recaptchaToken
-) {
-    public CrearUsuarioDto {
-        rol = Objects.requireNonNullElse(rol, Rol.USER);
-    }
-}
+) {}

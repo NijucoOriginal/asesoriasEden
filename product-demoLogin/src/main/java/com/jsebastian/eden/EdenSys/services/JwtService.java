@@ -37,18 +37,17 @@ public class JwtService {
 
     public String generateToken(User user) {
         Date now = new Date();
-        Date expirationDate = new Date(now.getTime() + 86400000); // 1 día (24h)
+        Date expirationDate = new Date(now.getTime() + 86400000); // 24 h
 
         return Jwts.builder()
                 .setSubject(user.getEmail())
                 .claim("id", user.getId())
-                .claim("rol", user.getRol())
-                .claim("telefono",user.getTelefono())
-                .claim("nombre",user.getNombre())
-                .claim("apellido",user.getApellido())
-                .claim("contrasena",user.getContrasena())
-                .claim("documentoIdentidad",user.getDocumentoIdentidad())
-                .claim("contrasena",user.getContrasena())
+                .claim("rol", user.getRol().name())
+                .claim("telefono", user.getTelefono())
+                .claim("nombre", user.getNombre())
+                .claim("apellido", user.getApellido())
+                .claim("documentoIdentidad", user.getDocumentoIdentidad())
+                .claim("estado", user.getEstado().name())
                 .setIssuedAt(now)
                 .setExpiration(expirationDate)
                 .signWith(getSigningKey(), SignatureAlgorithm.HS256)

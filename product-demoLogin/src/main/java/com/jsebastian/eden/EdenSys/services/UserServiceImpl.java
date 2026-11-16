@@ -1,632 +1,346 @@
 package com.jsebastian.eden.EdenSys.services;
 
-import ch.qos.logback.classic.Logger;
 import com.jsebastian.eden.EdenSys.Dtos.*;
-import com.jsebastian.eden.EdenSys.domain.Rol;
-import com.jsebastian.eden.EdenSys.domain.User;
-import com.jsebastian.eden.EdenSys.repository.LogsRepository;
-import com.jsebastian.eden.EdenSys.repository.UserRepository;
-import com.jsebastian.eden.EdenSys.mappers.UserMapper;
+import com.jsebastian.eden.EdenSys.domain.*;
 import com.jsebastian.eden.EdenSys.exceptions.ValueConflictException;
-// API DE MENSAJES
-
-import com.jsebastian.eden.EdenSys.services.interfaces.CaptchaService;
-import com.jsebastian.eden.EdenSys.services.interfaces.LogsService;
+import com.jsebastian.eden.EdenSys.mappers.UserMapper;
+import com.jsebastian.eden.EdenSys.repository.AsesoriaRepository;
+import com.jsebastian.eden.EdenSys.repository.UserRepository;
 import com.jsebastian.eden.EdenSys.services.interfaces.UserService;
-import jakarta.mail.MessagingException;
+import jakarta.mail.internet.MimeMessage;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.mail.SimpleMailMessage;
-import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
-import jakarta.mail.MessagingException;
-import jakarta.mail.internet.MimeMessage;
-import org.springframework.mail.javamail.MimeMessageHelper;
+import com.jsebastian.eden.EdenSys.domain.Asesoria;
+import com.jsebastian.eden.EdenSys.domain.EstadoAsesoria;
+import com.jsebastian.eden.EdenSys.domain.MotivoNotificacion;
 
+import java.security.SecureRandom;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 
-/**
- * Implementación del servicio para gestionar operaciones relacionadas con usuarios
- */
 @Service
 @RequiredArgsConstructor
 public class UserServiceImpl implements UserService {
 
-    @Autowired
-    private UserRepository userRepository;
-
-    @Autowired
-    private UserMapper userMapper;
-
-    @Autowired
-    private JavaMailSender mailSender;
-
-    @Value("${spring.mail.username}")
-    private String fromEmail;
-
-    @Autowired
-    private LogsService logsService;
-
-    @Autowired
-    private CaptchaService captchaService;
-
-    private static final Logger logger = (Logger) LoggerFactory.getLogger(UserServiceImpl.class);
-
+    private static final Logger log = LoggerFactory.getLogger(UserServiceImpl.class);
+    private static final SecureRandom RANDOM = new SecureRandom();
+    private static final int MINUTOS_VIGENCIA_CODIGO = 10;
+    private static final String CORREO_CONTACTO = "inmobiliariaedenco@gmail.com"; // confirmar correo oficial
+    private static final String PATRON_CONTRASENA = "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[^a-zA-Z0-9]).{8,}$";
+    private final CorreoService correoService;
+    private final UserRepository userRepository;
+    private final UserMapper userMapper;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
+    private final AsesoriaRepository asesoriaRepository;
+    private final NotificacionService notificacionService;
 
 
-    /**
-     * Guarda un nuevo usuario en la base de datos
-     * @param user el usuario a guardar
-     * @return el usuario guardado con su ID generado
-     */
+
+    private String fromEmail;
+
+    // ---------- Registro y activación ----------
+
     @Override
-    public User guardarUsuario(User user) {
-        return userRepository.save(user);
-    }
+    @Transactional
+    public UsuarioResponse crearUsuario(CrearUsuarioDto dto) {
+        String email = normalizar(dto.email());
 
-
-    /**
-     * Crea un nuevo usuario usando un DTO (las validaciones se hacen en el controlador)
-     * @param crearUsuarioDto el DTO con los datos del usuario a crear
-     * @return el usuario creado con su ID generado
-     * @throws ValueConflictException si el email ya existe
-     */
-    @Override
-    public UsuarioResponse crearUsuario(CrearUsuarioDto crearUsuarioDto) {
-
-        String emailNormalizado = crearUsuarioDto.email().trim().toLowerCase();
-
-        if (!esContrasenaSegura(crearUsuarioDto.contrasena())) {
+        if (!esContrasenaSegura(dto.contrasena())) {
             throw new IllegalArgumentException(
-                    "La contraseña debe tener mínimo 8 caracteres, " +
-                            "al menos una mayúscula, una minúscula, un número y un símbolo."
-            );
+                    "La contraseña debe tener mínimo 8 caracteres, una mayúscula, una minúscula, un número y un símbolo.");
         }
 
-        try {
+        Optional<User> existente = userRepository.findByEmail(email);
 
-            Optional<User> usuarioOpt = userRepository.findByEmail(emailNormalizado);
+        if (existente.isPresent()) {
+            User u = existente.get();
 
-            //SI EL USUARIO YA EXISTE
-
-            if (usuarioOpt.isPresent()) {
-
-                User usuario = usuarioOpt.get();
-
-                // DESVINCULADO  permitir registro nuevo
-                if (usuario.getRol() == Rol.DESVINCULADO) {
-
-                    if (existePorCedula(crearUsuarioDto.documentoIdentidad())) {
-                        throw new ValueConflictException(
-                                "Ya existe un usuario con esta cédula: "
-                                        + crearUsuarioDto.documentoIdentidad()
-                        );
-                    }
-
-                    userRepository.delete(usuario);
-                }
-
-                // PENDIENTE  actualizar datos + contraseña + reenviar código
-                else if (usuario.getRol() == Rol.PENDIENTE) {
-
-                    usuario.setNombre(crearUsuarioDto.nombre());
-                    usuario.setApellido(crearUsuarioDto.apellido());
-                    usuario.setTelefono(crearUsuarioDto.telefono());
-                    usuario.setDocumentoIdentidad(crearUsuarioDto.documentoIdentidad());
-
-                    usuario.setContrasena(
-                            passwordEncoder.encode(crearUsuarioDto.contrasena())
-                    );
-
-                    enviarCodigoEmailActivacion(usuario);
-                    userRepository.save(usuario);
-
-                    logsService.registrarLog("Usuario vinculado nuevamente correctamente",usuario.getId());
-
-                    logger.info("Usuario pendiente actualizado y código reenviado: {}", emailNormalizado);
-
-                    return userMapper.toUsuarioResponse(usuario);
-                }
-
-                // YA ACTIVO
-                else {
-                    throw new ValueConflictException(
-                            "Ya existe un usuario activo con este email: " + emailNormalizado
-                    );
-                }
+            if (u.getEstado() == EstadoUsuario.ACTIVO) {
+                throw new ValueConflictException("Ya existe un usuario activo con este email.");
+            }
+            if (u.getEstado() == EstadoUsuario.INACTIVO) {
+                throw new ValueConflictException("Esta cuenta está desactivada. Inicia sesión para reactivarla.");
             }
 
-            // USUARIO NUEVO
-
-            if (existePorCedula(crearUsuarioDto.documentoIdentidad())) {
-                throw new ValueConflictException(
-                        "Ya existe un usuario con esta cédula: "
-                                + crearUsuarioDto.documentoIdentidad()
-                );
+            // PENDIENTE: actualiza datos, cambia contraseña y reenvía código
+            if (!u.getDocumentoIdentidad().equals(dto.documentoIdentidad())
+                    && userRepository.existsByDocumentoIdentidad(dto.documentoIdentidad())) {
+                throw new ValueConflictException("Ya existe un usuario con esta cédula.");
             }
-
-            var nuevoUsuario = userMapper.toEntity(crearUsuarioDto);
-
-            nuevoUsuario.setEmail(emailNormalizado);
-            nuevoUsuario.setContrasena(
-                    passwordEncoder.encode(crearUsuarioDto.contrasena())
-            );
-            nuevoUsuario.setRol(Rol.PENDIENTE);
-
-            enviarCodigoEmailActivacion(nuevoUsuario);
-            userRepository.save(nuevoUsuario);
-
-
-            logsService.registrarLog("Usuario creado correctamente, esperando validación",nuevoUsuario.getId());
-            logger.info("Nuevo usuario creado con email: {}", emailNormalizado);
-
-            return userMapper.toUsuarioResponse(nuevoUsuario);
-
-        } catch (Exception e) {
-
-            logger.error("Error al crear usuario con email: {}", emailNormalizado, e);
-
-            throw new RuntimeException(
-                    "Error al crear el usuario: " + e.getMessage(), e
-            );
+            aplicarDatos(u, dto);
+            u.setContrasena(passwordEncoder.encode(dto.contrasena()));
+            generarYEnviarCodigoActivacion(u);
+            userRepository.save(u);
+            log.info("Usuario pendiente actualizado y código reenviado: {}", email);
+            return userMapper.toUsuarioResponse(u);
         }
-    }
 
-    /**
-     * Metodo privado para enviar el código de activación por email usando SendGrid
-     * @param nuevoUsuario
-     */
-    private void enviarCodigoEmailActivacion(User nuevoUsuario) {
-        // Generar código numérico de 6 caracteres
-        java.security.SecureRandom random = new java.security.SecureRandom();
-        String codigo = String.format("%06d", random.nextInt(1_000_000));
-        nuevoUsuario.setFechaCreacionCodigo(LocalDateTime.now());
-
-        // Guardar código en texto plano (está bien para tu caso)
-        nuevoUsuario.setCodigoActivacion(codigo);
-        String to = nuevoUsuario.getEmail();
-        String subject = "Código de activación de tu cuenta";
-        String content = "Hola, " + nuevoUsuario.getNombre() + ".\n\nTu código de activación es: " + codigo;
-
-        enviarCorreo(to, subject, content);
-    }
-
-    public void enviarCorreo(String destino, String asunto, String mensaje) {
-        try {
-            MimeMessage mail = mailSender.createMimeMessage();
-            MimeMessageHelper helper = new MimeMessageHelper(mail, true);
-
-            helper.setTo(destino);
-            helper.setSubject(asunto);
-            helper.setFrom(fromEmail);
-
-            String contenidoHtml = """
-            <html>
-                <body style="margin:0; padding:0; font-family: Arial, sans-serif; background-color:#f4f4f4;">
-                    
-                    <div style="max-width:600px; margin:auto; background:white; border-radius:10px; overflow:hidden;">
-                        
-                        <!-- HEADER -->
-                        <div style="background-color:#1abc9c; padding:20px; text-align:center;">
-                            <h1 style="color:white; margin:0;">EDÉN</h1>
-                            <p style="color:white; margin:0;">Tu hogar ideal te espera</p>
-                        </div>
-
-                        <!-- CONTENIDO -->
-                        <div style="padding:30px;">
-                            
-                            <p style="color:#2c3e50; font-size:16px; white-space: pre-line;">
-                                %s
-                            </p>
-
-                        </div>
-
-                        <!-- FOOTER -->
-                        <div style="background-color:#2c3e50; padding:20px; text-align:center;">
-                            <p style="color:white; font-size:12px; margin:0;">
-                                © 2026 EDÉN Inmobiliaria
-                            </p>
-                        </div>
-
-                    </div>
-
-                </body>
-            </html>
-        """.formatted(mensaje);
-
-            helper.setText(contenidoHtml, true);
-
-            mailSender.send(mail);
-
-        } catch (MessagingException e) {
-            e.printStackTrace();
+        if (userRepository.existsByDocumentoIdentidad(dto.documentoIdentidad())) {
+            throw new ValueConflictException("Ya existe un usuario con esta cédula.");
         }
+
+        User nuevo = new User();
+        aplicarDatos(nuevo, dto);
+        nuevo.setEmail(email);
+        nuevo.setContrasena(passwordEncoder.encode(dto.contrasena()));
+        nuevo.setRol(Rol.ESTUDIANTE);
+        nuevo.setEstado(EstadoUsuario.PENDIENTE);
+        generarYEnviarCodigoActivacion(nuevo);
+        userRepository.save(nuevo);
+        log.info("Nuevo usuario creado: {}", email);
+        return userMapper.toUsuarioResponse(nuevo);
     }
 
-
-    public void procesarContacto(ContactoDto contacto) {
-
-        String mensajeFinal =
-                "Nuevo mensaje de contacto\n\n" +
-                        "Nombre: " + contacto.nombre() + "\n" +
-                        "Teléfono: " + contacto.telefono() + "\n" +
-                        "Correo: " + contacto.correo() + "\n\n" +
-                        "Mensaje:\n" + contacto.mensaje();
-
-       enviarCorreo(
-                "inmobiliariaedenco@gmail.com",
-                "Nuevo contacto - " + contacto.asunto(),
-                mensajeFinal
-        );
-
-        enviarCorreo(contacto.correo(),"Recibimos su correo","Pronto te responderemos tus inquietudes");
-    }
-
-
-    /**
-     * Busca un usuario por su email
-     * @param email el email del usuario a buscar
-     * @return Optional<User> el usuario encontrado o vacío si no existe
-     */
     @Override
-    public Optional<User> buscarPorEmail(String email) {
-        return userRepository.findByEmail(email);
+    @Transactional
+    public boolean activarUsuario(String codigo) {
+        Optional<User> opt = userRepository.findByCodigoActivacion(codigo);
+        if (opt.isEmpty()) {
+            log.warn("Código de activación inválido: {}", codigo);
+            return false;
+        }
+
+        User u = opt.get();
+        if (u.getEstado() != EstadoUsuario.PENDIENTE) {
+            log.warn("La cuenta {} ya está activa o inactiva", u.getEmail());
+            return false;
+        }
+
+        if (codigoVencido(u)) {
+            u.setCodigoActivacion(null);
+            u.setFechaCreacionCodigo(null);
+            userRepository.save(u);
+            return false;
+        }
+
+        u.setEstado(EstadoUsuario.ACTIVO);
+        u.setCodigoActivacion(null);
+        u.setFechaCreacionCodigo(null);
+        userRepository.save(u);
+        log.info("Usuario activado: {}", u.getEmail());
+        return true;
     }
 
-    /**
-     * Busca un usuario por su ID
-     * @param id el ID del usuario a buscar
-     * @return Optional<User> el usuario encontrado o vacío si no existe
-     */
+    // ---------- Login ----------
+
+    @Override
+    public String validarCredencialesYGenerarToken(String email, String contrasena) {
+        User u = userRepository.findByEmail(normalizar(email))
+                .orElseThrow(() -> new ValueConflictException("Usuario no encontrado con el email proporcionado."));
+
+        if (!passwordEncoder.matches(contrasena, u.getContrasena())) {
+            throw new ValueConflictException("Contraseña incorrecta.");
+        }
+        if (u.getEstado() == EstadoUsuario.PENDIENTE) {
+            throw new ValueConflictException("Debes activar tu cuenta antes de iniciar sesión.");
+        }
+        return generarToken(u);
+    }
+
+    @Override
+    public String generarToken(User usuario) {
+        return jwtService.generateToken(usuario);
+    }
+
+    // ---------- Recuperación de contraseña ----------
+
+    @Override
+    @Transactional
+    public void enviarCodigoRecuperacionContrasena(SolicitarRecuperacionDto dto) {
+        User u = userRepository.findByEmail(normalizar(dto.email()))
+                .orElseThrow(() -> new ValueConflictException(
+                        "El correo proporcionado no se encuentra registrado en nuestro sistema."));
+
+        if (u.getEstado() == EstadoUsuario.INACTIVO) {
+            throw new ValueConflictException("Esta cuenta está desactivada. Reactívala para recuperar tu contraseña.");
+        }
+
+        String codigo = generarCodigo();
+        u.setCodigoActivacion(codigo);
+        u.setFechaCreacionCodigo(LocalDateTime.now());
+        correoService.enviarCorreo(u.getEmail(), "Recuperación de contraseña",
+                "Hola " + u.getNombre() + ", tu código es: " + codigo);
+        userRepository.save(u);
+    }
+
+    @Override
+    @Transactional
+    public boolean cambiarContrasenaConCodigo(CambiarContrasenaDto dto) {
+        Optional<User> opt = userRepository.findByEmail(normalizar(dto.email()));
+        if (opt.isEmpty()) return false;
+
+        User u = opt.get();
+        if (u.getCodigoActivacion() == null || !u.getCodigoActivacion().equals(dto.codigo())) {
+            return false;
+        }
+        if (codigoVencido(u)) {
+            u.setCodigoActivacion(null);
+            u.setFechaCreacionCodigo(null);
+            userRepository.save(u);
+            return false;
+        }
+        if (!esContrasenaSegura(dto.nuevaContrasena())) {
+            throw new IllegalArgumentException(
+                    "La contraseña no cumple los requisitos: mínimo 8 caracteres, una minúscula, una mayúscula, un número y un símbolo.");
+        }
+
+        u.setContrasena(passwordEncoder.encode(dto.nuevaContrasena()));
+        u.setCodigoActivacion(null);
+        u.setFechaCreacionCodigo(null);
+        userRepository.save(u);
+        return true;
+    }
+
+    // ---------- Perfil y administración ----------
+
+    @Override
+    @Transactional
+    public String actualizarUsuarioEmail(String email, CrearUsuarioDto dto) {
+        User u = userRepository.findByEmail(normalizar(email))
+                .orElseThrow(() -> new IllegalArgumentException("Usuario no encontrado con el email: " + email));
+
+        // La cédula no se modifica desde el perfil (así lo indica el frontend)
+        if (dto.nombre() != null) u.setNombre(dto.nombre());
+        if (dto.apellido() != null) u.setApellido(dto.apellido());
+        if (dto.telefono() != null) u.setTelefono(dto.telefono());
+
+        userRepository.save(u);
+        return generarToken(u);
+    }
+
+    @Override
+    @Transactional
+    public void desvincularUsuario(String email) {
+        User u = userRepository.findByEmail(normalizar(email))
+                .orElseThrow(() -> new IllegalArgumentException("Usuario no encontrado con el email: " + email));
+
+        if (u.getEstado() == EstadoUsuario.INACTIVO) {
+            throw new ValueConflictException("El usuario ya se encuentra desvinculado.");
+        }
+
+        for (Asesoria a : asesoriaRepository.findAbiertasDeUsuario(u)) {
+            boolean esTutor = a.getAsesor().getId().equals(u.getId());
+            User contraparte = esTutor ? a.getParticipante() : a.getAsesor();
+
+            // Decisión antes de cambiar el estado, para que el texto sea el correcto
+            boolean estabaAceptada = a.getEstado() == EstadoAsesoria.ACEPTADA;
+            String estadoTexto = estabaAceptada ? "cancelada" : "rechazada";
+
+            if (estabaAceptada) {
+                a.setEstado(EstadoAsesoria.CANCELADA);
+                a.setCanceladaPor(u);
+            } else {
+                a.setEstado(EstadoAsesoria.RECHAZADA);
+                a.setRechazadaPor(u);
+            }
+            a.setActualizadaEn(LocalDateTime.now());
+            asesoriaRepository.save(a);
+
+            notificacionService.crear(contraparte, a, MotivoNotificacion.USUARIO_DESACTIVADO,
+                    u.getNombre() + " " + u.getApellido() + " se desactivó, por lo que la asesoría "
+                            + a.getId() + " quedó " + estadoTexto + ".");
+        }
+
+        u.setEstado(EstadoUsuario.INACTIVO);
+        userRepository.save(u);
+    }
+
     @Override
     public Optional<User> buscarPorId(Long id) {
         return userRepository.findById(id);
     }
 
-    /**
-     * Busca un usuario por su cédula
-     * @param cedula la cédula del usuario a buscar
-     * @return Optional<User> el usuario encontrado o vacío si no existe
-     */
+    @Override
+    public Optional<User> buscarPorEmail(String email) {
+        return userRepository.findByEmail(normalizar(email));
+    }
+
     @Override
     public Optional<User> buscarPorCedula(String cedula) {
         return userRepository.findByDocumentoIdentidad(cedula);
     }
 
-    /**
-     * Obtiene todos los usuarios
-     * @return List<User> lista de todos los usuarios
-     */
     @Override
     public List<User> obtenerTodosLosUsuarios() {
         return userRepository.findAll();
     }
 
     @Override
-    public List<UserResponse> obtenerTodosLosUsuariosHabilitados() {
-        List<Rol> rolesInahabilitados=new ArrayList<>();
-        rolesInahabilitados.add(Rol.PENDIENTE);
-        rolesInahabilitados.add(Rol.DESVINCULADO);
-        rolesInahabilitados.add(Rol.ASESOR_LEGAL);
-        rolesInahabilitados.add(Rol.AGENTE);
-
-        List<User> usuarios=userRepository.findByRolNotIn(rolesInahabilitados);
-
-
-        return usuarios.stream().map(userMapper::toUserResponse).toList();
-    }
-
-
-    /**
-     * Elimina un usuario por su ID
-     * @param id el ID del usuario a eliminar
-     */
-    @Override
+    @Transactional
     public void eliminarUsuario(Long id) {
-        Optional<User> usuario=userRepository.findById(id);
-        userRepository.deleteById(id);
-        logsService.registrarLog("Usuario eliminado correctamente",usuario.get().getId());
+        User u = userRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Usuario no encontrado con id: " + id));
+        userRepository.delete(u);
     }
 
-    /**
-     * Elimina un usuario por su email
-     * @param email el email del usuario a eliminar
-     */
     @Override
+    @Transactional
     public void eliminarUsuarioPorEmail(String email) {
-        Optional<User> usuario = userRepository.findByEmail(email);
-        if (usuario.isPresent()) {
-            userRepository.delete(usuario.get());
-            logsService.registrarLog("Usuario eliminado correctamente",usuario.get().getId());
-        }
+        userRepository.findByEmail(normalizar(email)).ifPresent(userRepository::delete);
     }
 
-    @Override
-    public Optional<String> desvincularUsuario(String email) {
-        return userRepository.findByEmail(email).map(usuarioExistente -> {
-
-            if(usuarioExistente.getRol().equals(Rol.DESVINCULADO))
-            {
-                return "El usuario ya se encuentra desvinculado";
-            }
-            usuarioExistente.setRol(Rol.DESVINCULADO);
-
-            userRepository.save(usuarioExistente);
-            logsService.registrarLog("Usuario desvinculado correctamente",usuarioExistente.getId());
-            return "Usuario eliminado correctamente";
-        });
-    }
-
-    /**
-     * Verifica si existe un usuario con el email especificado
-     * @param email el email a verificar
-     * @return true si existe, false en caso contrario
-     */
     @Override
     public boolean existePorEmail(String email) {
-        return userRepository.existsByEmail(email);
+        return userRepository.existsByEmail(normalizar(email));
     }
 
-    @Override
-    public boolean usuarioRegistradoPreviamente(String email) {
-        Optional<User> usuario = userRepository.findByEmail(email);
-        if(usuario.isPresent())
-        {
-            if(usuario.get().getRol().equals(Rol.DESVINCULADO))
-            {
-                return false;
-            }
-            else
-            {
-                return true;
-            }
-        }
-        else
-        {
-            return false;
-        }
-    }
-
-
-    /**
-     * Verifica si existe un usuario con la cédula especificada
-     * @param cedula la cédula a verificar
-     * @return true si existe, false en caso contrario
-     */
     @Override
     public boolean existePorCedula(String cedula) {
         return userRepository.existsByDocumentoIdentidad(cedula);
     }
 
-    /**
-     * Actualiza un usuario existente
-     * @param user el usuario con los datos actualizados
-     * @return el usuario actualizado
-     */
     @Override
-    public Optional<UsuarioResponse> actualizarUsuario(String id,CrearUsuarioDto user) {
-        return Optional.empty();
+    public void procesarContacto(ContactoDto contacto) {
+        String mensajeFinal = "Nuevo mensaje de contacto\n\n"
+                + "Nombre: " + contacto.nombre() + "\n"
+                + "Teléfono: " + contacto.telefono() + "\n"
+                + "Correo: " + contacto.correo() + "\n\n"
+                + "Mensaje:\n" + contacto.mensaje();
+
+        correoService.enviarCorreo(CORREO_CONTACTO, "Nuevo contacto - " + contacto.asunto(), mensajeFinal);
+        correoService.enviarCorreo(contacto.correo(), "Recibimos su correo", "Pronto te responderemos tus inquietudes.");
     }
 
+    // ---------- Helpers ----------
 
-    @Override
-    public String actualizarUsuarioEmail(String email, CrearUsuarioDto user) {
-        var usuarioExistente = userRepository.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException("Usuario no encontrado con el email: " + email));
-
-        if (!user.nombre().equals(usuarioExistente.getNombre())) {
-            usuarioExistente.setNombre(user.nombre());
-        }
-        if (!user.apellido().equals(usuarioExistente.getApellido())) {
-            usuarioExistente.setApellido(user.apellido());
-        }
-        if (!user.telefono().equals(usuarioExistente.getTelefono())) {
-            usuarioExistente.setTelefono(user.telefono());
-        }
-        if (!user.documentoIdentidad().equals(usuarioExistente.getDocumentoIdentidad())) {
-            usuarioExistente.setDocumentoIdentidad(user.documentoIdentidad());
-        }
-
-        var usuarioActualizado = userRepository.save(usuarioExistente);
-        logsService.registrarLog("Usuario actualizado correctamente",usuarioExistente.getId());
-        return generarToken(usuarioActualizado);
+    private void aplicarDatos(User u, CrearUsuarioDto dto) {
+        u.setNombre(dto.nombre());
+        u.setApellido(dto.apellido());
+        u.setDocumentoIdentidad(dto.documentoIdentidad());
+        u.setTelefono(dto.telefono());
     }
 
-
-    /**
-     * Activa un usuario basado en el código de activación
-     * @param codigo el código de activación
-     * @return true si la activación fue exitosa, false en caso contrario
-     */
-    @Override
-    public boolean activarUsuario(String codigo) {
-        Optional<User> usuarioOptional = userRepository.findByCodigoActivacion(codigo);
-
-        if (usuarioOptional.isPresent()) {
-            User usuario = usuarioOptional.get();
-
-            if (usuario.getFechaCreacionCodigo().isBefore(LocalDateTime.now().minusMinutes(10))) { //10 minutos
-                logsService.registrarLog("El codigo del usuario ha expirado correctamente",usuario.getId());
-                logger.warn("Código expirado para usuario {}", usuario.getEmail());
-                usuario.setRol(Rol.PENDIENTE);
-                usuario.setCodigoActivacion(null);
-                usuario.setFechaCreacionCodigo(null);
-                userRepository.save(usuario);
-                return false;
-            }
-
-
-            // Verificar si el usuario ya está activado
-            if (usuario.getRol() != Rol.PENDIENTE) {
-                logger.warn("El usuario con email {} ya está activado.", usuario.getEmail());
-                return false;
-            }
-
-            // Actualizar el rol del usuario a CLIENTE
-            usuario.setRol(Rol.CLIENTE);
-            logsService.registrarLog("El usuario ha pasado a ser un cliente de la aplicación",usuario.getId());
-            usuario.setCodigoActivacion(null); // Eliminar el código de activación
-            userRepository.save(usuario);
-
-            logger.info("Usuario con email {} activado exitosamente.", usuario.getEmail());
-            return true;
-        } else {
-            logger.warn("Código de activación inválido: {}", codigo);
-            return false;
-        }
+    private void generarYEnviarCodigoActivacion(User u) {
+        String codigo = generarCodigo();
+        u.setCodigoActivacion(codigo);
+        u.setFechaCreacionCodigo(LocalDateTime.now());
+        correoService.enviarCorreo(u.getEmail(), "Código de activación de tu cuenta",
+                "Hola, " + u.getNombre() + ".\n\nTu código de activación es: " + codigo);
     }
 
-    /**
-     * Valida las credenciales del usuario y genera un token JWT
-     * @param email el email del usuario
-     * @param contrasena la contraseña del usuario
-     * @return el token JWT generado
-     * @throws IllegalArgumentException si las credenciales son inválidas
-     */
-    @Override
-    public String validarCredencialesYGenerarToken(String email, String contrasena,String captchaToken) {
-        Optional<User> usuarioOptional = userRepository.findByEmail(email);
+    private String generarCodigo() {
+        return String.format("%06d", RANDOM.nextInt(1_000_000));
+    }
 
-        System.out.println("Validando credenciales para el email: " + email);
-        if (usuarioOptional.isPresent()) {
-            User usuario = usuarioOptional.get();
-            System.out.println("Usuario encontrado: " + usuario.getEmail());
-            if(!usuario.getRol().equals(Rol.DESVINCULADO))
-            {
-                // Verificar la contraseña
-                if (passwordEncoder.matches(contrasena, usuario.getContrasena())) {
-                    // Generar el token JWT
-                    System.out.println("Contraseña válida, token generado.");
-                    logsService.registrarLog("Inicio de sesion exitoso ",usuario.getId());
-                    return generarToken(usuario);
-                } else {
-                    throw new ValueConflictException("Contraseña incorrecta.");
-                }
-            }
-            else
-            {
-                System.out.print("El usuario ya se encuentra desvinculado");
-                logsService.registrarLog("Inicio de sesion no exitoso",0L);
-                throw new ValueConflictException("El usuario ya se encuentra desvinculado");
-            }
-        }
-        else
-        {
-            throw new ValueConflictException("Usuario no encontrado con el email proporcionado.");
-        }
+    private boolean codigoVencido(User u) {
+        return u.getFechaCreacionCodigo() == null
+                || u.getFechaCreacionCodigo().isBefore(LocalDateTime.now().minusMinutes(MINUTOS_VIGENCIA_CODIGO));
     }
 
     private boolean esContrasenaSegura(String contrasena) {
-        if (contrasena == null) return false;
-
-        String patron = "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[^a-zA-Z0-9]).{8,}$";
-
-        return contrasena.matches(patron);
-    }
-    public void enviarCodigoRecuperacionContrasena(SolicitarRecuperacionDto solicitarRecuperacionDto) {
-
-        String emailNormalizado = solicitarRecuperacionDto.email().trim().toLowerCase();
-
-        Optional<User> usuarioOpt = userRepository.findByEmail(emailNormalizado);
-
-        // CAMBIO: Ahora sí lanzamos un error si no existe
-        if (usuarioOpt.isEmpty()) {
-            logger.warn("Solicitud de recuperación para email inexistente: {}", emailNormalizado);
-            throw new ValueConflictException("El correo proporcionado no se encuentra registrado en nuestro sistema.");
-        }
-
-        User usuario = usuarioOpt.get();
-
-        // CAMBIO: También para usuarios desvinculados
-        if (usuario.getRol() == Rol.DESVINCULADO) {
-            logger.warn("Intento de recuperación para usuario desvinculado: {}", emailNormalizado);
-            throw new ValueConflictException("Esta cuenta ha sido desvinculada. Contacta al administrador.");
-        }
-
-        // ... resto del código (generar código, guardar y enviar correo) ...
-        java.security.SecureRandom random = new java.security.SecureRandom();
-        String codigo = String.format("%06d", random.nextInt(1_000_000));
-
-        usuario.setCodigoActivacion(codigo);
-        usuario.setFechaCreacionCodigo(LocalDateTime.now());
-        userRepository.save(usuario);
-
-        String subject = "Recuperación de contraseña";
-        String mensaje = "Hola " + usuario.getNombre() + ", tu código es: " + codigo;
-
-        enviarCorreo(usuario.getEmail(), subject, mensaje);
-        logger.info("Código de recuperación enviado a {}", emailNormalizado);
+        return contrasena != null && contrasena.matches(PATRON_CONTRASENA);
     }
 
-    public boolean cambiarContrasenaConCodigo(CambiarContrasenaDto dto) {
-
-        String emailNormalizado = dto.email().trim().toLowerCase();
-
-        Optional<User> usuarioOpt = userRepository.findByEmail(emailNormalizado);
-
-        if (usuarioOpt.isEmpty()) {
-            logger.warn("Intento de cambio de contraseña con email inexistente: {}", emailNormalizado);
-            return false;
-        }
-
-        User usuario = usuarioOpt.get();
-
-        // Validar código
-        if (usuario.getCodigoActivacion() == null ||
-                !usuario.getCodigoActivacion().equals(dto.codigo())) {
-
-            logger.warn("Código incorrecto para {}", emailNormalizado);
-            return false;
-        }
-
-        // ⏱ Validar expiración
-        if (usuario.getFechaCreacionCodigo() == null ||
-                usuario.getFechaCreacionCodigo().isBefore(
-                        LocalDateTime.now().minusMinutes(10))) {
-
-            logger.warn("Código expirado para {}", emailNormalizado);
-
-            usuario.setCodigoActivacion(null);
-            usuario.setFechaCreacionCodigo(null);
-            userRepository.save(usuario);
-
-            return false;
-        }
-
-        // Validar seguridad de contraseña
-        if (!esContrasenaSegura(dto.nuevaContrasena())) {
-            throw new IllegalArgumentException(
-                    "La contraseña no cumple los requisitos de seguridad,debe contener minimo 8 caracteres,una minuscula,mayuscula y un signo"
-            );
-        }
-
-        // Encriptar nueva contraseña
-        usuario.setContrasena(passwordEncoder.encode(dto.nuevaContrasena()));
-
-        // Invalidar código
-        usuario.setCodigoActivacion(null);
-        usuario.setFechaCreacionCodigo(null);
-
-        userRepository.save(usuario);
-
-        logsService.registrarLog("Contraseña del usuario actualizada correctamente",usuario.getId());
-        logger.info("Contraseña actualizada correctamente para {}", emailNormalizado);
-
-        return true;
+    private String normalizar(String email) {
+        return email == null ? null : email.trim().toLowerCase();
     }
-    @Override
-    public String generarToken(User usuario) {
-        return jwtService.generateToken(usuario);
-    }
-    
+
 }

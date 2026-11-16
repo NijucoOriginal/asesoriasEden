@@ -1,217 +1,98 @@
 package com.jsebastian.eden.EdenSys.controller;
 
-import com.jsebastian.eden.EdenSys.Dtos.AuthResponse;
-import com.jsebastian.eden.EdenSys.Dtos.UserResponse;
-import com.jsebastian.eden.EdenSys.Dtos.UsuarioResponse;
+import com.jsebastian.eden.EdenSys.Dtos.*;
 import com.jsebastian.eden.EdenSys.domain.User;
-import com.jsebastian.eden.EdenSys.repository.UserRepository;
+import com.jsebastian.eden.EdenSys.exceptions.ValueConflictException;
+import com.jsebastian.eden.EdenSys.mappers.UserMapper;
 import com.jsebastian.eden.EdenSys.services.interfaces.CaptchaService;
 import com.jsebastian.eden.EdenSys.services.interfaces.UserService;
-import com.jsebastian.eden.EdenSys.Dtos.CrearUsuarioDto;
-import com.jsebastian.eden.EdenSys.exceptions.ValueConflictException;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import jakarta.validation.Valid;
+import java.util.Map;
+import java.util.Optional;
 
-import java.util.*;
-
-/**
- * Controlador REST para gestionar operaciones CRUD de usuarios
- */
-@RequiredArgsConstructor
 @RestController
 @RequestMapping("/api/usuarios")
+@RequiredArgsConstructor
 public class UserController {
 
-    @Value("${frontend.url}")
-    private String frontendUrl;
-
-    @Value("${frontend.local.url}")
-    private String frontendLocalUrl;
-
     private final UserService userService;
-
+    private final UserMapper userMapper;
     private final CaptchaService captchaService;
-    /**
-* Crea un nuevo usuario usando DTO con validaciones Jakarta
-     * @param crearUsuarioDto el DTO con los datos del usuario a crear
-     * @return ResponseEntity con el usuario creado
-     */
+
     @PostMapping
-    public ResponseEntity<?> crearUsuario(@Valid @RequestBody CrearUsuarioDto crearUsuarioDto){
+    public ResponseEntity<?> crearUsuario(@Valid @RequestBody CrearUsuarioDto dto) {
+        if (!captchaService.verificar(dto.recaptchaToken())) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
+                    "error", "Seguridad",
+                    "message", "La verificación de reCAPTCHA ha fallado o ha expirado."));
+        }
         try {
-
-            // VERIFICACIÓN DEL CAPTCHA
-            boolean isCaptchaValid = captchaService.verificar(crearUsuarioDto.recaptchaToken());
-
-            if (!isCaptchaValid) {
-                Map<String, String> errorResponse = new HashMap<>();
-                errorResponse.put("error", "Seguridad");
-                errorResponse.put("message", "La verificación de reCAPTCHA ha fallado o ha expirado.");
-                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorResponse);
-            }
-
-            UsuarioResponse response = userService.crearUsuario(crearUsuarioDto);
-            return ResponseEntity.ok(response);
+            return ResponseEntity.ok(userService.crearUsuario(dto));
         } catch (ValueConflictException e) {
-            Map<String, String> errorResponse = new HashMap<>();
-            errorResponse.put("error", "Conflicto de datos");
-            errorResponse.put("message", e.getMessage());
-            return ResponseEntity.status(HttpStatus.CONFLICT).body(errorResponse);
-        } catch (RuntimeException e) {
-            Map<String, String> errorResponse = new HashMap<>();
-            errorResponse.put("error", "Error interno del servidor");
-            errorResponse.put("message", e.getMessage());
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
-        } catch (Exception e) {
-            Map<String, String> errorResponse = new HashMap<>();
-            errorResponse.put("error", "Error inesperado");
-            errorResponse.put("message", "Ocurrió un error al procesar la solicitud");
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
-        }
-    }
-
-
-    /**
-     * Obtiene un usuario por su ID
-     * @param id el ID del usuario
-     * @return ResponseEntity con el usuario encontrado
-     */
-    @GetMapping("/{id}")
-    public ResponseEntity<User> obtenerUsuarioPorId(@PathVariable Long id) {
-        Optional<User> usuario = userService.buscarPorId(id);
-        return usuario.map(user -> new ResponseEntity<>(user, HttpStatus.OK))
-                .orElse(new ResponseEntity<>(HttpStatus.NOT_FOUND));
-    }
-
-    /**
-     * Obtiene un usuario por su email
-     * @param email el email del usuario
-     * @return ResponseEntity con el usuario encontrado
-     */
-    @GetMapping("/email/{email}")
-    public ResponseEntity<User> obtenerUsuarioPorEmail(@PathVariable String email) {
-        Optional<User> usuario = userService.buscarPorEmail(email);
-        return usuario.map(user -> new ResponseEntity<>(user, HttpStatus.OK))
-                .orElse(new ResponseEntity<>(HttpStatus.NOT_FOUND));
-    }
-
-    /**
-     * Obtiene un usuario por su cédula
-     * @param cedula la cédula del usuario
-     * @return ResponseEntity con el usuario encontrado
-     */
-    @GetMapping("/cedula/{cedula}")
-    public ResponseEntity<User> obtenerUsuarioPorCedula(@PathVariable String cedula) {
-        Optional<User> usuario = userService.buscarPorCedula(cedula);
-        return usuario.map(user -> new ResponseEntity<>(user, HttpStatus.OK))
-                .orElse(new ResponseEntity<>(HttpStatus.NOT_FOUND));
-    }
-
-    @GetMapping("/agente/obtenerTodos/{id}")
-    public ResponseEntity<List<UserResponse>> obtenerTodosLosUsuariosHabilitados(@PathVariable Long id) {
-        System.out.println("Llega hasta aqui");
-
-        List<UserResponse> usuarios = userService.obtenerTodosLosUsuariosHabilitados();
-
-        List<UserResponse> desocupada=new ArrayList<>();
-
-        for(UserResponse u:usuarios)
-        {
-            if(u.id()!=id)
-            {
-                desocupada.add(u);
-            }
-        }
-        return new ResponseEntity<>(desocupada, HttpStatus.OK);
-    }
-
-    /**
-     * Actualiza un usuario existente
-     * @param id el ID del usuario a actualizar
-     * @param user los nuevos datos del usuario
-* @return ResponseEntity con el usuario actualizado
-     */
-    @PutMapping("/{id}")
-    public ResponseEntity<UsuarioResponse> actualizarUsuario(@PathVariable String id, @RequestBody CrearUsuarioDto user) {
-        try {
-            Optional<UsuarioResponse>usuarioActualizado = userService.actualizarUsuario(id,user);
-            return usuarioActualizado.map(ResponseEntity::ok)
-                    .orElseGet(()-> ResponseEntity.notFound().build());
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of(
+                    "error", "Conflicto de datos",
+                    "message", e.getMessage()));
         } catch (IllegalArgumentException e) {
-            return new ResponseEntity<>(HttpStatus.NOT_FOUND);
-        } catch (Exception e) {
-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
+                    "error", "Validación",
+                    "message", e.getMessage()));
         }
     }
 
+    @GetMapping("/{id}")
+    public ResponseEntity<UserResponse> obtenerPorId(@PathVariable Long id) {
+        return responder(userService.buscarPorId(id));
+    }
 
+    @GetMapping("/email/{email}")
+    public ResponseEntity<UserResponse> obtenerPorEmail(@PathVariable String email) {
+        return responder(userService.buscarPorEmail(email));
+    }
+
+    @GetMapping("/cedula/{cedula}")
+    public ResponseEntity<UserResponse> obtenerPorCedula(@PathVariable String cedula) {
+        return responder(userService.buscarPorCedula(cedula));
+    }
 
     @PutMapping("/actualizar/{email}")
-    public ResponseEntity<AuthResponse> actualizarUsuarioPorEmail(@PathVariable String email, @RequestBody CrearUsuarioDto user) {
+    public ResponseEntity<AuthResponse> actualizarUsuarioPorEmail(@PathVariable String email,
+                                                                  @RequestBody CrearUsuarioDto dto) {
         try {
-            String usuarioActualizado = userService.actualizarUsuarioEmail(email,user);
-            return ResponseEntity.ok(new AuthResponse(usuarioActualizado));
+            return ResponseEntity.ok(new AuthResponse(userService.actualizarUsuarioEmail(email, dto)));
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(new AuthResponse(e.getMessage()));
         }
     }
 
-
-    /**
-     * Elimina un usuario por su ID
-     * @param id el ID del usuario a eliminar
-     * @return ResponseEntity sin contenido
-     */
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> eliminarUsuario(@PathVariable Long id) {
         try {
             userService.eliminarUsuario(id);
-            return new ResponseEntity<>(HttpStatus.NO_CONTENT);
+            return ResponseEntity.noContent().build();
         } catch (Exception e) {
-            return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+            return ResponseEntity.notFound().build();
         }
     }
 
-    /**
-     * Elimina un usuario por su email
-     * @param email el email del usuario a eliminar
-     * @return ResponseEntity sin contenido
-     */
     @DeleteMapping("/email/{email}")
     public ResponseEntity<Void> eliminarUsuarioPorEmail(@PathVariable String email) {
-        try {
-            userService.eliminarUsuarioPorEmail(email);
-            return new ResponseEntity<>(HttpStatus.NO_CONTENT);
-        } catch (Exception e) {
-            return new ResponseEntity<>(HttpStatus.NOT_FOUND);
-        }
+        userService.eliminarUsuarioPorEmail(email);
+        return ResponseEntity.noContent().build();
     }
 
-    /**
-     * Verifica si existe un usuario con el email especificado
-     * @param email el email a verificar
-     * @return ResponseEntity con true si existe, false en caso contrario
-     */
     @GetMapping("/existe/email/{email}")
-    public ResponseEntity<Boolean> existeUsuarioPorEmail(@PathVariable String email) {
-        boolean existe = userService.existePorEmail(email);
-        return new ResponseEntity<>(existe, HttpStatus.OK);
+    public ResponseEntity<Boolean> existeEmail(@PathVariable String email) {
+        return ResponseEntity.ok(userService.existePorEmail(email));
     }
 
-    /**
-     * Verifica si existe un usuario con la cédula especificada
-     * @param cedula la cédula a verificar
-     * @return ResponseEntity con true si existe, false en caso contrario
-     */
     @GetMapping("/existe/cedula/{cedula}")
-    public ResponseEntity<Boolean> existeUsuarioPorCedula(@PathVariable String cedula) {
-        boolean existe = userService.existePorCedula(cedula);
-        return new ResponseEntity<>(existe, HttpStatus.OK);
+    public ResponseEntity<Boolean> existeCedula(@PathVariable String cedula) {
+        return ResponseEntity.ok(userService.existePorCedula(cedula));
     }
 
     @PutMapping("/desvincular/{email}")
@@ -220,5 +101,8 @@ public class UserController {
         return ResponseEntity.ok("Usuario desvinculado correctamente");
     }
 
-
+    private ResponseEntity<UserResponse> responder(Optional<User> usuario) {
+        return usuario.map(u -> ResponseEntity.ok(userMapper.toUserResponse(u)))
+                .orElseGet(() -> ResponseEntity.notFound().build());
+    }
 }

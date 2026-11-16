@@ -1,0 +1,12 @@
+package com.jsebastian.eden.EdenSys.domain;
+
+public enum MotivoNotificacion {
+    BIENVENIDA,
+    ASESORIA_CREADA,
+    ASESORIA_ACEPTADA,
+    ASESORIA_RECHAZADA,
+    ASESORIA_CONTRAPROPUESTA,
+    ASESORIA_CANCELADA,
+    ASESORIA_EXPIRADA,
+    USUARIO_DESACTIVADO
+}

@@ -1,5 +1,6 @@
 package com.jsebastian.eden.EdenSys.repository;
 
+import com.jsebastian.eden.EdenSys.domain.EstadoUsuario;
 import com.jsebastian.eden.EdenSys.domain.User;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
@@ -18,6 +19,8 @@ public interface UserRepository extends JpaRepository<User, Long> {
      * @return Optional<User> el usuario encontrado o vacío
      */
     Optional<User> findByEmail(String email);
+
+    List<User> findByEstadoAndMateriasQueDictaIsNotEmpty(EstadoUsuario estado);
 
     /**
      * Busca un usuario por su cédula

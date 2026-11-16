@@ -1,25 +1,25 @@
 package com.jsebastian.eden.EdenSys.controller;
 
 import com.jsebastian.eden.EdenSys.Dtos.*;
-import com.jsebastian.eden.EdenSys.domain.Inmueble;
+import com.jsebastian.eden.EdenSys.services.CuentaService;
 import com.jsebastian.eden.EdenSys.services.interfaces.CaptchaService;
-import com.jsebastian.eden.EdenSys.services.interfaces.InmuebleService;
 import com.jsebastian.eden.EdenSys.services.interfaces.UserService;
 import com.jsebastian.eden.EdenSys.services.JwtService;
 import com.jsebastian.eden.EdenSys.exceptions.ValueConflictException;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.http.HttpMethod;
 
-import java.util.List;
-import java.util.Map;
 
 @RestController
 @RequestMapping("/api/auth")
 @RequiredArgsConstructor
+@Slf4j
 public class AuthController {
 
     @Value("${frontend.url}")
@@ -33,19 +33,17 @@ public class AuthController {
     private final CaptchaService captchaService;
 
 
-    private final InmuebleService inmuebleService;
+    private final CuentaService cuentaService;
 
-
-    private final JwtService jwtService;
-
-    @PostMapping("/register")
-    public ResponseEntity<String> register(@RequestBody RegisterRequest request) {
+    @PostMapping("/resend-activation")
+    public ResponseEntity<String> reenviarCodigoActivacion(@RequestBody EmailRequest req) {
         try {
-            userService.crearUsuario(request.toCrearUsuarioDto());
-            return ResponseEntity.status(HttpStatus.CREATED).body("Usuario registrado exitosamente. Por favor, verifica tu correo para activar tu cuenta.");
-        } catch (ValueConflictException e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
+            cuentaService.reenviarCodigoActivacion(req.email());
+        } catch (RuntimeException e) {
+            log.error("Error reenviando código de activación", e);
         }
+        // Mismo mensaje exista o no el correo, para no revelar qué cuentas están registradas
+        return ResponseEntity.ok("Si la cuenta existe y está pendiente de activación, recibirás un nuevo código.");
     }
 
     @GetMapping("/activate/{codigo}")
@@ -60,21 +58,18 @@ public class AuthController {
 
     @PostMapping("/login")
     public ResponseEntity<AuthResponse> login(@RequestBody LoginRequest request) {
-        // 1. VERIFICACIÓN DEL CAPTCHA (Igual que en el registro)
-        boolean isCaptchaValid = captchaService.verificar(request.recaptchaToken());
-
-        if (!isCaptchaValid) {
+        if (!captchaService.verificar(request.recaptchaToken())) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                     .body(new AuthResponse("La verificación de reCAPTCHA ha fallado o ha expirado."));
         }
-
         try {
-            String token = userService.validarCredencialesYGenerarToken(request.email(), request.contrasena(), request.recaptchaToken());
+            String token = userService.validarCredencialesYGenerarToken(request.email(), request.contrasena());
             return ResponseEntity.ok(new AuthResponse(token));
-        } catch (IllegalArgumentException e) {
+        } catch (ValueConflictException e) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(new AuthResponse(e.getMessage()));
         }
     }
+
     @PostMapping("/recuperar")
     public ResponseEntity<String> solicitarRecuperacion(
             @Valid @RequestBody SolicitarRecuperacionDto solicitarRecuperacionDto // ✅ Body, NO Param
