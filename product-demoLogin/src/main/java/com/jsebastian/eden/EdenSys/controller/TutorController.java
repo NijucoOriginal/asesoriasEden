@@ -1,5 +1,6 @@
 package com.jsebastian.eden.EdenSys.controller;
 
+import com.jsebastian.eden.EdenSys.Dtos.MateriaTutorResponse;
 import com.jsebastian.eden.EdenSys.Dtos.TutorResponse;
 import com.jsebastian.eden.EdenSys.services.TutorService;
 import lombok.RequiredArgsConstructor;
@@ -25,5 +26,10 @@ public class TutorController {
         return tutorService.obtener(id)
                 .map(ResponseEntity::ok)
                 .orElseGet(() -> ResponseEntity.notFound().build());
+    }
+
+    @GetMapping("/{id}/materias")
+    public List<MateriaTutorResponse> materias(@PathVariable Long id) {
+        return tutorService.materiasDe(id);
     }
 }

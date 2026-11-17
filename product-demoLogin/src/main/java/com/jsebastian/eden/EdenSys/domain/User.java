@@ -73,7 +73,7 @@ public class User {
 
     // Un usuario tiene un programa académico
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "programa_id")
+    @JoinColumn(name = "programa_id", nullable = true) // obligatorio desde la app, nullable por cuentas antiguas
     private Programa programaAcademico;
 
     // Materias que el usuario puede enseñar (N:M). Tabla: user_materia_dicta

@@ -2,6 +2,7 @@ package com.jsebastian.eden.EdenSys.Dtos;
 
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
@@ -32,6 +33,9 @@ public record CrearUsuarioDto(
                 regexp = "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[^a-zA-Z0-9]).{8,}$",
                 message = "La contraseña debe tener al menos una mayúscula, una minúscula, un número, un símbolo y mínimo 8 caracteres")
         String contrasena,
+
+        @NotNull(message = "Debes seleccionar tu carrera")
+        Long programaId,
 
         @NotBlank(message = "La validación de seguridad es obligatoria")
         String recaptchaToken

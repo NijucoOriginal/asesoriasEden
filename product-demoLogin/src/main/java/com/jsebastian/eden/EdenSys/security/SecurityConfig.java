@@ -92,6 +92,8 @@ public class SecurityConfig {
                                 "/api/auth/recuperar/cambiar").permitAll()
                         // Tutores: públicos (se muestran en la página principal)
                         .requestMatchers(HttpMethod.GET, "/api/tutores", "/api/tutores/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/materias", "/api/materias/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/programas", "/api/programas/**").permitAll()
                         // WebSocket: el token se valida en el handshake
                         .requestMatchers("/ws-chat/**").permitAll()
                         // Cuenta INACTIVA: solo perfil y reactivación

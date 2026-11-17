@@ -1,10 +1,9 @@
 package com.jsebastian.eden.EdenSys.controller;
 
-import com.jsebastian.eden.EdenSys.Dtos.AuthResponse;
-import com.jsebastian.eden.EdenSys.Dtos.CodigoRequest;
-import com.jsebastian.eden.EdenSys.Dtos.PerfilResponse;
+import com.jsebastian.eden.EdenSys.Dtos.*;
 import com.jsebastian.eden.EdenSys.exceptions.ValueConflictException;
 import com.jsebastian.eden.EdenSys.services.CuentaService;
+import com.jsebastian.eden.EdenSys.services.MateriaService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -14,6 +13,7 @@ import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -22,6 +22,8 @@ import java.util.Map;
 public class CuentaController {
 
     private final CuentaService cuentaService;
+
+    private final MateriaService materiaService;
 
     @GetMapping("/me")
     public ResponseEntity<PerfilResponse> miPerfil(@AuthenticationPrincipal UserDetails usuario) {
@@ -62,5 +64,22 @@ public class CuentaController {
     public ResponseEntity<Map<String, String>> error(RuntimeException e) {
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(Map.of("message", "Ocurrió un error al procesar la solicitud."));
+    }
+
+    @GetMapping("/me/materias")
+    public ResponseEntity<List<MateriaResponse>> misMaterias(@AuthenticationPrincipal UserDetails usuario) {
+        return ResponseEntity.ok(materiaService.materiasDe(usuario.getUsername()));
+    }
+
+    @PutMapping("/me/materias")
+    public ResponseEntity<List<MateriaResponse>> actualizarMisMaterias(@AuthenticationPrincipal UserDetails usuario,
+                                                                       @RequestBody MateriasTutorRequest req) {
+        return ResponseEntity.ok(materiaService.reemplazar(usuario.getUsername(), req));
+    }
+
+    @PutMapping("/me/programa")
+    public ResponseEntity<PerfilResponse> cambiarPrograma(@AuthenticationPrincipal UserDetails usuario,
+                                                          @RequestBody CambiarProgramaRequest req) {
+        return ResponseEntity.ok(cuentaService.cambiarPrograma(usuario.getUsername(), req.programaId()));
     }
 }

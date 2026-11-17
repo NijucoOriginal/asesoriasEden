@@ -1,5 +1,6 @@
 package com.jsebastian.eden.EdenSys.services;
 
+import com.jsebastian.eden.EdenSys.Dtos.MateriaTutorResponse;
 import com.jsebastian.eden.EdenSys.Dtos.TutorResponse;
 import com.jsebastian.eden.EdenSys.domain.EstadoAsesoria;
 import com.jsebastian.eden.EdenSys.domain.EstadoUsuario;
@@ -13,6 +14,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 
@@ -70,5 +72,21 @@ public class TutorService {
                 Math.round(horas * 10) / 10.0,
                 promedio,
                 resenas.size());
+    }
+
+    @Transactional(readOnly = true)
+    public List<MateriaTutorResponse> materiasDe(Long tutorId) {
+        return userRepository.findById(tutorId)
+                .filter(u -> u.getEstado() == EstadoUsuario.ACTIVO)
+                .map(u -> u.getMateriasQueDicta().stream()
+                        .sorted(Comparator.comparing(Materia::getNombreMateria))
+                        .map(m -> new MateriaTutorResponse(
+                                m.getId(),
+                                m.getNombreMateria(),
+                                m.getTemas().stream()
+                                        .map(t -> new MateriaTutorResponse.TemaResumen(t.getId(), t.getNombreTema()))
+                                        .toList()))
+                        .toList())
+                .orElse(List.of());
     }
 }

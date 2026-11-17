@@ -25,6 +25,7 @@ public class CuentaService {
     private final CorreoService correoService;
     private final JwtService jwtService;
     private final CloudinaryService cloudinaryService;
+    private final ProgramaService programaService;
 
     // ---------- Perfil ----------
 
@@ -132,5 +133,13 @@ public class CuentaService {
 
     private String normalizar(String email) {
         return email == null ? null : email.trim().toLowerCase();
+    }
+
+    @Transactional
+    public PerfilResponse cambiarPrograma(String email, Long programaId) {
+        User u = buscar(email);
+        programaService.cambiarCarrera(u, programaId, null);
+        userRepository.save(u);
+        return PerfilResponse.from(u);
     }
 }

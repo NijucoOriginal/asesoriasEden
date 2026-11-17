@@ -24,6 +24,4 @@ public interface UserService {
     boolean cambiarContrasenaConCodigo(CambiarContrasenaDto dto);
     void procesarContacto(ContactoDto contacto);
     String generarToken(User usuario);
-
-    void procesarContacto(ContactoDto contacto);
 }

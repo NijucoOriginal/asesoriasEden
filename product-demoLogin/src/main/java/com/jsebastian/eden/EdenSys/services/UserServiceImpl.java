@@ -41,6 +41,7 @@ public class UserServiceImpl implements UserService {
     private final JwtService jwtService;
     private final AsesoriaRepository asesoriaRepository;
     private final NotificacionService notificacionService;
+    private final ProgramaService programaService;
 
 
 
@@ -89,6 +90,7 @@ public class UserServiceImpl implements UserService {
 
         User nuevo = new User();
         aplicarDatos(nuevo, dto);
+        nuevo.setProgramaAcademico(programaService.buscarObligatorio(dto.programaId()));
         nuevo.setEmail(email);
         nuevo.setContrasena(passwordEncoder.encode(dto.contrasena()));
         nuevo.setRol(Rol.ESTUDIANTE);

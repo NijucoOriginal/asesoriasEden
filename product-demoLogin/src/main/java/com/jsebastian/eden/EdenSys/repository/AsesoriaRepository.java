@@ -8,6 +8,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
 
 @Repository
@@ -38,4 +39,15 @@ public interface AsesoriaRepository extends JpaRepository<Asesoria, Long> {
           AND a.fechaCierreConfirmada < :ahora
     """)
     List<Long> findIdsAceptadasParaFinalizar(@Param("ahora") LocalDateTime ahora);
+
+
+    @Query("""
+    SELECT COUNT(a) FROM Asesoria a
+    WHERE a.asesor = :tutor
+      AND a.materia.id IN :materiaIds
+      AND a.estado IN (com.jsebastian.eden.EdenSys.domain.EstadoAsesoria.PENDIENTE,
+                       com.jsebastian.eden.EdenSys.domain.EstadoAsesoria.CONTRAPROPUESTA,
+                       com.jsebastian.eden.EdenSys.domain.EstadoAsesoria.ACEPTADA)
+""")
+    long contarAbiertasDeMateriasDe(@Param("tutor") User tutor, @Param("materiaIds") Collection<Long> materiaIds);
 }
